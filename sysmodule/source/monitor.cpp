@@ -115,7 +115,7 @@ namespace alefbet::pctrl::srv {
                             logInfo("[Monitor] Timeout for user %s and title %llu\n", user.nickname.c_str(), titleId);
                             if(limits.scope == LimitScope::Title) {
                                 if(!terminateCurrentApplication()) {
-                                    service_->showScreenTimeout();
+                                    logError("[Monitor] Could not close restricted title; retrying\n");
                                 }
                             } else {
                                 service_->showScreenTimeout();

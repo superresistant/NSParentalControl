@@ -330,12 +330,15 @@ namespace alefbet::pctrl::helpers {
         if(pid > 0) {
             u64 titleId = getRunningApplicationTitleId(pid);
             if(titleId > 0) {
-                if(R_FAILED(pmshellInitialize())) {
-                    logError("[Helpers] Could not initialize pm:shell\n");
+                Result rc = pmshellInitialize();
+                if(R_FAILED(rc)) {
+                    logError("[Helpers] Could not initialize pm:shell: %i:%i\n", R_MODULE(rc), R_DESCRIPTION(rc));
                     return false;
                 }
-                if(R_FAILED(pmshellTerminateProgram(titleId))) {
-                    logError("[Helpers] Could not terminate the title with titleId %s\n", titleIdToString(titleId).c_str());
+
+                rc = pmshellTerminateProgram(titleId);
+                if(R_FAILED(rc)) {
+                    logError("[Helpers] Could not terminate the title with titleId %s: %i:%i\n", titleIdToString(titleId).c_str(), R_MODULE(rc), R_DESCRIPTION(rc));
                     pmshellExit();
                     return false;
                 }
