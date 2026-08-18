@@ -1,6 +1,8 @@
 #pragma once
 #include <switch.h>
+#include <chrono>
 #include "database/history.h"
+#include "helpers.h"
 #include "service.h"
 
 namespace alefbet::pctrl::srv {
@@ -30,6 +32,9 @@ namespace alefbet::pctrl::srv {
             bool running_ = false;
             bool notified_ = false;
             u64 currentTitle_ = 0;
+            structs::UserData currentUser_;
+            std::chrono::steady_clock::time_point lastAccountedAt_;
+            int lastNotifiedRemaining_ = -1;
     };    
 
 };

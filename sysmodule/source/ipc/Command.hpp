@@ -31,7 +31,11 @@ namespace Ipc {
         RemoveTitleFromBlacklist,   /*! Removes a title from a users's blacklist */
         GetUserDailyLimit,          /*! Gets a users limits. */
         SetAuthenticationActive,    /*! Sets the authentication active or not */
-        IsAuthenticationActive      /*! Returns true if authentication is enabled */
+        IsAuthenticationActive,     /*! Returns true if authentication is enabled */
+        SetTitleDailyLimit,
+        GetTitleDailyLimit,
+        GetCurrentUsageTime,
+        GetCurrentRemainingTime
     };
 
 
@@ -65,6 +69,10 @@ namespace Ipc {
             case Command::GetUserDailyLimit: return "GetUserDailyLimit";
             case Command::SetAuthenticationActive: return "SetAuthenticationActive";
             case Command::IsAuthenticationActive: return "IsAuthenticationActive";
+            case Command::SetTitleDailyLimit: return "SetTitleDailyLimit";
+            case Command::GetTitleDailyLimit: return "GetTitleDailyLimit";
+            case Command::GetCurrentUsageTime: return "GetCurrentUsageTime";
+            case Command::GetCurrentRemainingTime: return "GetCurrentRemainingTime";
             default: return "Unknown";
         }
     };

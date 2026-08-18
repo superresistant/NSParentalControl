@@ -30,6 +30,7 @@ typedef enum {
 using Settings = std::map<SettingKey, Setting>;
 
 constexpr const char* SETTING_DAILY_LIMIT_USERS = "daily_limit_users";
+constexpr const char* SETTING_DAILY_LIMIT_TITLES = "daily_limit_titles";
 constexpr const char* SETTING_ADMIN_PIN = "admin_pin";
 constexpr const char* SETTING_WORKING_MODE = "working_mode";
 constexpr const char* SETTING_SHOW_REMAINING_TIME = "show_remaining_time";

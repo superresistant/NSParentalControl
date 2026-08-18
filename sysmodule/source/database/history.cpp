@@ -60,13 +60,12 @@ std::vector<HistoryEntry> History::entries() const {
 std::vector<HistoryEntry> History::entries(const AccountUid& uid, const std::string& date, const u64& titleId) const {
     std::vector<HistoryEntry> entries;
 
-    for(const auto& _entry: d_->history) {
-        if(_entry.uid().uid[0] == uid.uid[0] && _entry.uid().uid[1] == uid.uid[1] && _entry.date() == date) {
-            if(titleId > 0 && titleId == _entry.titleId()) {
-                entries.push_back(_entry);
-            } else {
-                entries.push_back(_entry);
-            }            
+    for(const auto& entry: d_->history) {
+        const bool sameUser = entry.uid().uid[0] == uid.uid[0] && entry.uid().uid[1] == uid.uid[1];
+        const bool sameDate = entry.date() == date;
+        const bool sameTitle = titleId == 0 || titleId == entry.titleId();
+        if(sameUser && sameDate && sameTitle) {
+            entries.push_back(entry);
         }
     }
 

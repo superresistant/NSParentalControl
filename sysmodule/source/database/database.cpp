@@ -215,6 +215,8 @@ namespace alefbet::pctrl::database {
                 logError("[Database] Could not create a new database file.\n");
                 return;
             }
+            data_synchronized_ = true;
+            return;
         } else {
             s64 fileSize = 0;
             if(R_FAILED(fsFileGetSize(&handle_database_, &fileSize))) {
@@ -226,8 +228,9 @@ namespace alefbet::pctrl::database {
             }
 
             if(fileSize == 0) {
-                logError("[Database] Database file is empty\n");
+                logInfo("[Database] Database file is empty\n");
                 fsFileClose(&handle_database_);
+                data_synchronized_ = true;
                 return;
             }
 
@@ -328,22 +331,15 @@ namespace alefbet::pctrl::database {
             return;
         }
 
-        const auto stdstr_data = j_history.dump();
-        //const auto str_data = stdstr_data.c_str();
-        u64 lenstr = stdstr_data.length();
-        void* s_data = malloc(lenstr+1);
-        memset(s_data, 0, lenstr);
-        //memcpy(s_data, str_data, lenstr);
-        std::snprintf((char*)s_data, lenstr, "%s", stdstr_data.c_str());
+        const auto data = j_history.dump();
+        logDebug("[Database] Writing sessions data %s (size=%i)\n", data.c_str(), data.size());
 
-        logDebug("[Database] Writing sessions data %s (size=%i)\n", s_data, lenstr);    
-
-        if(R_FAILED(fsFileWrite(&handle_database_, 0, s_data, lenstr, FsWriteOption_Flush))) {
+        if(R_FAILED(fsFileWrite(&handle_database_, 0, data.data(), data.size(), FsWriteOption_Flush))) {
             logError("[Database] Could not write into database file\n");
         }
 
         fsFileClose(&handle_database_);
-        free(s_data);
+        data_synchronized_ = true;
     }    
 
     std::vector<HistoryEntry> getHistory(AccountUid uid, std::string date) {
@@ -370,7 +366,7 @@ namespace alefbet::pctrl::database {
         std::string uidToString = accountUidToString(uid);
 
         //Get current history
-        //loadDatabase();
+        loadDatabase();
 
         const auto& date = today();
         if(date.empty()) {

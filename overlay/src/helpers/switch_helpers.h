@@ -19,7 +19,13 @@ namespace alefbet {
                 }
             } UserData;
 
+            struct ApplicationData {
+                u64 titleId = 0;
+                std::string name;
+            };
+
             std::list<UserData> getUsersList();
+            std::list<ApplicationData> getApplicationsList();
 
             UserUid accountUidToString(AccountUid uid);
             AccountUid accountUidFromString(const UserUid& uid);

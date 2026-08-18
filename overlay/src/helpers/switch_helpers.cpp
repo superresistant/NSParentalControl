@@ -4,6 +4,9 @@
 #include <string_view>
 #include <ranges>
 #include <vector>
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 using namespace alefbet::pctrl::logger;
 
@@ -68,6 +71,57 @@ namespace alefbet {
                 return users;
             }
 
+            std::list<ApplicationData> getApplicationsList() {
+                std::list<ApplicationData> applications;
+                if(R_FAILED(nsInitialize())) {
+                    logError("[Helpers] Could not initialize NS service\n");
+                    return applications;
+                }
+
+                constexpr s32 PageSize = 32;
+                NsApplicationRecord records[PageSize];
+                s32 offset = 0;
+                s32 count = 0;
+                do {
+                    if(R_FAILED(nsListApplicationRecord(records, PageSize, offset, &count))) {
+                        logError("[Helpers] Could not enumerate applications\n");
+                        break;
+                    }
+
+                    for(s32 index = 0; index < count; index++) {
+                        const auto titleId = records[index].application_id;
+                        NsApplicationControlData control{};
+                        NacpLanguageEntry* language = nullptr;
+                        u64 actualSize = 0;
+                        std::string name;
+                        if(R_SUCCEEDED(nsGetApplicationControlData(
+                            NsApplicationControlSource_Storage,
+                            titleId,
+                            &control,
+                            sizeof(control),
+                            &actualSize))
+                            && R_SUCCEEDED(nacpGetLanguageEntry(&control.nacp, &language))
+                            && language != nullptr) {
+                            name = language->name;
+                        }
+
+                        if(name.empty()) {
+                            std::ostringstream stream;
+                            stream << std::uppercase << std::hex << std::setw(16) << std::setfill('0') << titleId;
+                            name = stream.str();
+                        }
+                        applications.push_back({titleId, name});
+                    }
+                    offset += count;
+                } while(count == PageSize);
+
+                nsExit();
+                applications.sort([](const auto& left, const auto& right) {
+                    return left.name < right.name;
+                });
+                return applications;
+            }
+
             UserUid accountUidToString(AccountUid uid) {
                 return std::to_string(uid.uid[0]) + ":" + std::to_string(uid.uid[1]);
             }
@@ -92,48 +146,29 @@ namespace alefbet {
             }
 
             std::string getTitleName(u64 titleId) {
-                bool ok = R_SUCCEEDED(nsInitialize());
-                if(!ok) {
+                if(R_FAILED(nsInitialize())) {
                     logError("[Helpers] Could not initialize NS service\n");
                     return "Error #11";
                 }
 
-                s32 count = 0;
-                NsApplicationRecord records[100]; 
-                if(ok) {               
-                    ok = R_SUCCEEDED(nsListApplicationRecord(records, sizeof(records), 0, &count));
-                } 
-
-                if(!ok) {
-                    logError("[Helpers] Could not get application record count\n");
+                NsApplicationControlData control{};
+                NacpLanguageEntry* language = nullptr;
+                u64 actualSize = 0;
+                if(R_FAILED(nsGetApplicationControlData(
+                    NsApplicationControlSource_Storage,
+                    titleId,
+                    &control,
+                    sizeof(control),
+                    &actualSize))) {
+                    logError("[Helpers] Could not get application information for %llu\n", titleId);
                     nsExit();
-                    return "Error #12";                    
+                    return "Error #13";
                 }
 
-                NsApplicationControlData nacp;
-                NacpLanguageEntry* langEntry = nullptr;
-                u64 actual_size = 0;
-
-                if(ok) {
-                    ok = R_SUCCEEDED(nsGetApplicationControlData(NsApplicationControlSource_Storage, titleId, &nacp, sizeof(nacp), &actual_size));                    
-
-                    if(!ok) {
-                        logError("[Helpers] Could not get application information for %ull\n", titleId);
-                        nsExit();
-                        return "Error #13";                
-                    } else {                
-                        if(R_SUCCEEDED(nacpGetLanguageEntry(&nacp.nacp, &langEntry)) && langEntry != nullptr) {
-                            nsExit();
-                            return langEntry->name;                            
-                        } else {
-                            nsExit();
-                            return "Error #14";
-                        }                
-                    }
-                }
-
+                const auto result = nacpGetLanguageEntry(&control.nacp, &language);
+                const std::string name = R_SUCCEEDED(result) && language != nullptr ? language->name : "Error #14";
                 nsExit();
-                return "#NoName#";
+                return name;
             }
         }
     }

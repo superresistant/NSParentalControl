@@ -30,6 +30,8 @@ namespace alefbet::pctrl::ipc {
     std::string getCurrentTitle();
     std::chrono::minutes getUserUsageTime(const AccountUid& accountUid = AccountUid{});
     std::chrono::minutes getUserRemainingTime(const AccountUid& accountUid = AccountUid{});
+    std::chrono::minutes getCurrentUsageTime();
+    std::chrono::minutes getCurrentRemainingTime();
 
     std::string encodeAdminPin(const std::vector<u64>&);
     bool verifyPin(const std::vector<u64>&);
@@ -44,6 +46,8 @@ namespace alefbet::pctrl::ipc {
     
     u16 getDailyLimit(const UserData& user);
     bool setDailyLimit(const UserData& user, u16 limit);
+    u16 getTitleDailyLimit(const UserData& user, u64 titleId);
+    bool setTitleDailyLimit(const UserData& user, u64 titleId, u16 limit);
 
     bool isDebugLogEnabled();
     bool enableDebugLog(bool enable);

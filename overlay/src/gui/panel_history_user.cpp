@@ -38,7 +38,9 @@ void HistoryUserPanel::rebuildUI() {
     logDebug("Usage: %i, remaining:%i\n", today_usage.count(), today_remaining.count());
 
     std::string strUsage = std::to_string(today_usage_h.count()) +"h " +std::to_string( (today_usage - today_usage_h).count() ) +"mn";
-    std::string strRemaining = std::to_string(today_remaining_h.count()) +"h " +std::to_string( (today_remaining - today_remaining_h).count() ) +"mn";
+    std::string strRemaining = today_remaining.count() == UINT16_MAX
+        ? "Unlimited"
+        : std::to_string(today_remaining_h.count()) +"h " +std::to_string( (today_remaining - today_remaining_h).count() ) +"mn";
 
     rootList_->addItem(new tsl::elm::ListItem("Usage", strUsage));
     rootList_->addItem(new tsl::elm::ListItem("Remaining", strRemaining));

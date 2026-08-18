@@ -171,6 +171,28 @@ namespace alefbet::pctrl::ipc {
         return std::chrono::minutes(remainingTime);
     }
 
+    minutes getCurrentUsageTime() {
+        if(!isAvailable()) {
+            return minutes(0);
+        }
+
+        u16 usage = 0;
+        auto& service = getAppContext().pctrl_service;
+        const auto result = serviceDispatchOut(&service, (u32)Ipc::Command::GetCurrentUsageTime, usage);
+        return R_SUCCEEDED(result) ? minutes(usage) : minutes(0);
+    }
+
+    minutes getCurrentRemainingTime() {
+        if(!isAvailable()) {
+            return minutes(0);
+        }
+
+        u16 remaining = 0;
+        auto& service = getAppContext().pctrl_service;
+        const auto result = serviceDispatchOut(&service, (u32)Ipc::Command::GetCurrentRemainingTime, remaining);
+        return R_SUCCEEDED(result) ? minutes(remaining) : minutes(0);
+    }
+
     std::string encodeAdminPin(const std::vector<u64>& keys) {
         std::string pin;
 
@@ -440,6 +462,55 @@ namespace alefbet::pctrl::ipc {
 
         if(R_FAILED(res)) {
             logError("[IPC] An error occured while setting the daily limit.\n");
+            return false;
+        }
+
+        return true;
+    }
+
+    u16 getTitleDailyLimit(const UserData& user, u64 titleId) {
+        if(!isAvailable() || titleId == 0) {
+            return 0;
+        }
+
+        struct Args {
+            u64 titleId;
+            char userId[80];
+        } args{};
+        args.titleId = titleId;
+        const auto userId = helpers::accountUidToString(user.uid);
+        std::snprintf(args.userId, sizeof(args.userId), "%s", userId.c_str());
+
+        u16 limit = 0;
+        auto& service = getAppContext().pctrl_service;
+        const auto result = serviceDispatchInOut(&service, (u32)Ipc::Command::GetTitleDailyLimit, args, limit);
+        if(R_FAILED(result)) {
+            logError("[IPC] Could not get title daily limit\n");
+            return 0;
+        }
+
+        return limit;
+    }
+
+    bool setTitleDailyLimit(const UserData& user, u64 titleId, u16 limit) {
+        if(!isAvailable() || titleId == 0) {
+            return false;
+        }
+
+        struct Args {
+            u64 titleId;
+            u16 limitInMinutes;
+            char userId[80];
+        } args{};
+        args.titleId = titleId;
+        args.limitInMinutes = limit;
+        const auto userId = helpers::accountUidToString(user.uid);
+        std::snprintf(args.userId, sizeof(args.userId), "%s", userId.c_str());
+
+        auto& service = getAppContext().pctrl_service;
+        const auto result = serviceDispatchIn(&service, (u32)Ipc::Command::SetTitleDailyLimit, args);
+        if(R_FAILED(result)) {
+            logError("[IPC] Could not set title daily limit\n");
             return false;
         }
 

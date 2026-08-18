@@ -330,7 +330,10 @@ namespace alefbet::pctrl::helpers {
         if(pid > 0) {
             u64 titleId = getRunningApplicationTitleId(pid);
             if(titleId > 0) {
-                pmshellInitialize();
+                if(R_FAILED(pmshellInitialize())) {
+                    logError("[Helpers] Could not initialize pm:shell\n");
+                    return false;
+                }
                 if(R_FAILED(pmshellTerminateProgram(titleId))) {
                     logError("[Helpers] Could not terminate the title with titleId %s\n", titleIdToString(titleId).c_str());
                     pmshellExit();
@@ -535,6 +538,61 @@ namespace alefbet::pctrl::helpers {
         }
     }
 
+    u16 getDailyLimitForTitle(const std::string& userId, u64 titleId) {
+        if(titleId == 0) {
+            return 0;
+        }
+
+        auto& settings = loadSettings();
+        if(!settings.contains(SETTING_DAILY_LIMIT_TITLES)) {
+            return 0;
+        }
+
+        const auto& limits = settings[SETTING_DAILY_LIMIT_TITLES].string_value;
+        if(limits.empty()) {
+            return 0;
+        }
+
+        const auto j_limits = json::parse(limits);
+        const auto titleKey = titleIdToString(titleId);
+        if(!j_limits.contains(userId) || !j_limits[userId].contains(titleKey)) {
+            return 0;
+        }
+
+        return j_limits[userId][titleKey].get<u16>();
+    }
+
+    void setDailyLimitForTitle(const std::string& userId, u64 titleId, u16 limit_in_minutes) {
+        if(titleId == 0) {
+            return;
+        }
+
+        auto& settings = loadSettings();
+        json j_setting = json::object();
+        if(settings.contains(SETTING_DAILY_LIMIT_TITLES) && !settings[SETTING_DAILY_LIMIT_TITLES].string_value.empty()) {
+            j_setting = json::parse(settings[SETTING_DAILY_LIMIT_TITLES].string_value);
+        }
+
+        const auto titleKey = titleIdToString(titleId);
+        if(limit_in_minutes == 0) {
+            if(j_setting.contains(userId)) {
+                j_setting[userId].erase(titleKey);
+                if(j_setting[userId].empty()) {
+                    j_setting.erase(userId);
+                }
+            }
+        } else {
+            j_setting[userId][titleKey] = limit_in_minutes;
+        }
+
+        Setting setting {
+            .key = SETTING_DAILY_LIMIT_TITLES,
+            .type = STRING,
+            .string_value = j_setting.dump()
+        };
+        saveSetting(setting);
+    }
+
     std::string encodePassword(const std::vector<u64>& password) {
         std::string pin;
 
@@ -570,13 +628,25 @@ namespace alefbet::pctrl::helpers {
     
     u16 getUserUsageTimeForToday(const AccountUid& uid) {
         const auto history = getHistory(uid, today());
-        auto usage_time_in_minutes = (u16)0;        
+        u32 usage_time_in_minutes = 0;
 
-        // Compute the total usage for today 
         for(const auto& entry: history) {
             usage_time_in_minutes += entry.durationInMinutes();
         }
 
-        return usage_time_in_minutes;
+        return static_cast<u16>(std::min(usage_time_in_minutes, static_cast<u32>(UINT16_MAX)));
+    }
+
+    u16 getUserTitleUsageTimeForToday(const AccountUid& uid, u64 titleId) {
+        const auto history = getHistory(uid, today());
+        u32 usage_time_in_minutes = 0;
+
+        for(const auto& entry: history) {
+            if(entry.titleId() == titleId) {
+                usage_time_in_minutes += entry.durationInMinutes();
+            }
+        }
+
+        return static_cast<u16>(std::min(usage_time_in_minutes, static_cast<u32>(UINT16_MAX)));
     }
 }

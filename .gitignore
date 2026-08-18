@@ -45,6 +45,7 @@ build/
 out/
 out.nosync/
 build.nosync/
+dist/
 
 # binaries
 *.nsp

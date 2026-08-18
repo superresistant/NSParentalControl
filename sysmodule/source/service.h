@@ -52,8 +52,12 @@ namespace alefbet::pctrl::srv {
             
             Ipc::Result getUserUsageTime(Ipc::Request*);
             Ipc::Result getUserRemainingTime(Ipc::Request*);
+            Ipc::Result getCurrentUsageTime(Ipc::Request*);
+            Ipc::Result getCurrentRemainingTime(Ipc::Request*);
             Ipc::Result setUserDailyLimit(Ipc::Request*);
             Ipc::Result getUserDailyLimit(Ipc::Request*);
+            Ipc::Result setTitleDailyLimit(Ipc::Request*);
+            Ipc::Result getTitleDailyLimit(Ipc::Request*);
 
             Ipc::Result setAdminPin(Ipc::Request*);
             Ipc::Result verifyAdminPin(Ipc::Request*);

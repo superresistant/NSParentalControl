@@ -29,6 +29,7 @@
 #include "monitor.h"
 #include "gui/gui_controller.h"
 #include "notifications_controller.h"
+#include "limit_policy.h"
 
 using namespace alefbet::pctrl::logger;
 using namespace alefbet::pctrl::database;
@@ -151,48 +152,20 @@ namespace alefbet::pctrl::srv {
 
         Ipc::Result rc = request->readRequestValue(user_uid);
         if(rc != Ipc::Result::Ok) {
-            logDebug("[Service] No user uid sent, using current user\n");
-
             user = helpers::getCurrentUser();
             if(!user.isValid()) {
-                logDebug("[Service] There is no user\n");
                 return Ipc::Result::Ok;
             }
         } else {
-            // Get the user from the uid sent
-            logDebug("[Service] user Uid received: %s\n", user_uid);
             const auto& account_uid = accountUidFromString(UserUid(user_uid));
             user = getUserFromAccountUid(account_uid);
         }
 
-        logDebug("[Service] Get usage time for user %s\n", user.nickname.c_str());
+        const auto globalLimit = getDailyLimitForUser(accountUidToString(user.uid));
+        const auto globalUsage = getUserUsageTimeForToday(user.uid);
+        const u16 remaining = globalLimit > 0 ? remainingMinutes(globalLimit, globalUsage) : UINT16_MAX;
 
-        const auto& date = today();
-        if(date.empty()) {
-            return Ipc::Result::Error;
-        }
-
-        const auto history = getHistory(user.uid, date);
-        u16 usage_time_in_minutes = 0;
-
-        // Compute the total usage for today 
-        for(const auto& entry: history) {
-            usage_time_in_minutes += entry.durationInMinutes();
-        }
-
-        // Get the daily limit
-        auto settings = loadSettings();
-        const auto& userId = accountUidToString(user.uid);
-        const auto& daily_limit = getDailyLimitForUser(userId);
-        s16 remaining_time_in_minutes = 0;
-        if(daily_limit > usage_time_in_minutes) {
-            remaining_time_in_minutes = daily_limit - usage_time_in_minutes;
-        }
-
-        logDebug("[Service] User=%s, usage=%i minutes, remaining=%i minutes\n", user.nickname.c_str(), usage_time_in_minutes, remaining_time_in_minutes);
-
-        request->appendReplyValue(remaining_time_in_minutes);
-
+        request->appendReplyValue(remaining);
         return Ipc::Result::Ok;
     }
 
@@ -218,12 +191,50 @@ namespace alefbet::pctrl::srv {
 
         logDebug("[Service] Get usage time for user %s\n", user.nickname.c_str());
 
-        const auto& usage_time_in_minutes = getUserUsageTimeForToday(user.uid);
+        const auto usage = getUserUsageTimeForToday(user.uid);
+        logDebug("[Service] User=%s, usage=%i minutes\n", user.nickname.c_str(), usage);
+        request->appendReplyValue(usage);
 
-        logDebug("[Service] User=%s, usage=%i minutes\n", user.nickname.c_str(), usage_time_in_minutes);
+        return Ipc::Result::Ok;
+    }
 
-        request->appendReplyValue(usage_time_in_minutes);
+    Ipc::Result Service::getCurrentUsageTime(Ipc::Request* request) {
+        const auto user = helpers::getCurrentUser();
+        const auto processId = helpers::getRunningApplicationPid();
+        const auto titleId = processId > 0 ? helpers::getRunningApplicationTitleId(processId) : 0;
+        if(!user.isValid() || titleId == 0) {
+            request->appendReplyValue(static_cast<u16>(0));
+            return Ipc::Result::Ok;
+        }
 
+        const auto userId = accountUidToString(user.uid);
+        const auto globalUsage = getUserUsageTimeForToday(user.uid);
+        const auto titleUsage = getUserTitleUsageTimeForToday(user.uid, titleId);
+        const auto limits = evaluateLimits(
+            getDailyLimitForUser(userId),
+            globalUsage,
+            getDailyLimitForTitle(userId, titleId),
+            titleUsage);
+        request->appendReplyValue(limits.scope == LimitScope::Title ? titleUsage : globalUsage);
+        return Ipc::Result::Ok;
+    }
+
+    Ipc::Result Service::getCurrentRemainingTime(Ipc::Request* request) {
+        const auto user = helpers::getCurrentUser();
+        const auto processId = helpers::getRunningApplicationPid();
+        const auto titleId = processId > 0 ? helpers::getRunningApplicationTitleId(processId) : 0;
+        if(!user.isValid() || titleId == 0) {
+            request->appendReplyValue(static_cast<u16>(UINT16_MAX));
+            return Ipc::Result::Ok;
+        }
+
+        const auto userId = accountUidToString(user.uid);
+        const auto limits = evaluateLimits(
+            getDailyLimitForUser(userId),
+            getUserUsageTimeForToday(user.uid),
+            getDailyLimitForTitle(userId, titleId),
+            getUserTitleUsageTimeForToday(user.uid, titleId));
+        request->appendReplyValue(limits.isLimited() ? limits.remainingMinutes : static_cast<u16>(UINT16_MAX));
         return Ipc::Result::Ok;
     }
 
@@ -261,6 +272,37 @@ namespace alefbet::pctrl::srv {
 
         request->appendReplyValue(limit);
         
+        return Ipc::Result::Ok;
+    }
+
+    Ipc::Result Service::setTitleDailyLimit(Ipc::Request* request) {
+        struct Args {
+            u64 titleId;
+            u16 limitInMinutes;
+            char userId[80];
+        } args{};
+
+        const auto rc = request->readRequestValue(args);
+        if(rc != Ipc::Result::Ok || args.titleId == 0) {
+            return Ipc::Result::BadInput;
+        }
+
+        helpers::setDailyLimitForTitle(args.userId, args.titleId, args.limitInMinutes);
+        return Ipc::Result::Ok;
+    }
+
+    Ipc::Result Service::getTitleDailyLimit(Ipc::Request* request) {
+        struct Args {
+            u64 titleId;
+            char userId[80];
+        } args{};
+
+        const auto rc = request->readRequestValue(args);
+        if(rc != Ipc::Result::Ok || args.titleId == 0) {
+            return Ipc::Result::BadInput;
+        }
+
+        request->appendReplyValue(helpers::getDailyLimitForTitle(args.userId, args.titleId));
         return Ipc::Result::Ok;
     }
 
@@ -440,10 +482,12 @@ namespace alefbet::pctrl::srv {
         saveSetting(setting);
         enabled_ = isEnabled;
 
-        if(enabled_) {
-            monitor_->start();
-        } else {
-            monitor_->stop();
+        if(monitor_ != nullptr) {
+            if(enabled_) {
+                monitor_->start();
+            } else {
+                monitor_->stop();
+            }
         }
 
         return Ipc::Result::Ok;
@@ -552,6 +596,18 @@ namespace alefbet::pctrl::srv {
             }            
             case Ipc::Command::GetUserDailyLimit: {
                 return getUserDailyLimit(request);
+            }
+            case Ipc::Command::SetTitleDailyLimit: {
+                return setTitleDailyLimit(request);
+            }
+            case Ipc::Command::GetTitleDailyLimit: {
+                return getTitleDailyLimit(request);
+            }
+            case Ipc::Command::GetCurrentUsageTime: {
+                return getCurrentUsageTime(request);
+            }
+            case Ipc::Command::GetCurrentRemainingTime: {
+                return getCurrentRemainingTime(request);
             }
             case Ipc::Command::SetAdminPin: {                
                 return setAdminPin(request);

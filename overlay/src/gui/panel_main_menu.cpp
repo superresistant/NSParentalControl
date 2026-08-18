@@ -104,7 +104,7 @@ void MainMenuPanel::rebuildUI() {
         rootList_->addItem(entryTitle);
 
         // Usage time        
-        auto usageTimeInMinutes = ipc::getUserUsageTime();
+        auto usageTimeInMinutes = ipc::getCurrentUsageTime();
         auto durationInMinutes = minutes{usageTimeInMinutes};
         auto hoursPart = duration_cast<hours>(durationInMinutes);
         auto minutesPart = duration_cast<minutes>(durationInMinutes - hoursPart);
@@ -112,12 +112,16 @@ void MainMenuPanel::rebuildUI() {
         rootList_->addItem(entryUsageTime);
 
         // Remaining time
-        auto remainingTime = ipc::getUserRemainingTime();
-        durationInMinutes = minutes{remainingTime};
-        hoursPart = duration_cast<hours>(durationInMinutes);
-        minutesPart = duration_cast<minutes>(durationInMinutes - hoursPart);
-        auto entryRemainingTime = new tsl::elm::ListItem("Remaining: " +(hoursPart.count() > 0 ? std::to_string(hoursPart.count()) + "h " : "") +std::to_string(minutesPart.count()) +" mn");
-        rootList_->addItem(entryRemainingTime);        
+        auto remainingTime = ipc::getCurrentRemainingTime();
+        if(remainingTime.count() == UINT16_MAX) {
+            rootList_->addItem(new tsl::elm::ListItem("Remaining: Unlimited"));
+        } else {
+            durationInMinutes = minutes{remainingTime};
+            hoursPart = duration_cast<hours>(durationInMinutes);
+            minutesPart = duration_cast<minutes>(durationInMinutes - hoursPart);
+            auto entryRemainingTime = new tsl::elm::ListItem("Remaining: " +(hoursPart.count() > 0 ? std::to_string(hoursPart.count()) + "h " : "") +std::to_string(minutesPart.count()) +" mn");
+            rootList_->addItem(entryRemainingTime);
+        }
     } else {
         rootList_->addItem(new tsl::elm::ListItem("No user / app started"));
     }            

@@ -79,6 +79,8 @@ This screen lets you define a PIN for the Administrator of the Parental Control.
 
 #### Setup limits
 
-This screen lets you define the unique play time limit for all the players. Each player has its own play time but the limit is the same for every player.
+Choose a user, then configure either `All games` or an installed game. Limits are tracked separately for every user and reset each local calendar day.
 
-In case you want more time to play for a single player you will have to disable the parental control temporarilty.
+`All games` limits total play across all titles. A value of zero means unlimited. A per-game value of zero inherits the all-games limit. If both limits are configured, the first one reached is enforced.
+
+Reaching a per-game limit closes only that game; other games remain available. Reaching the all-games limit uses the full timeout screen.

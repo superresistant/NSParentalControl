@@ -4,7 +4,9 @@
 #include "database/settings.h"
 #include "database/database.h"
 #include "notifications_controller.h"
+#include "limit_policy.h"
 #include <chrono>
+#include <algorithm>
 #include <list>
 //#include "pctrl_screen.hpp"
 
@@ -13,8 +15,9 @@ using namespace alefbet::pctrl::helpers;
 using namespace alefbet::pctrl::database;
 using namespace std::chrono_literals;
 
-constexpr std::chrono::minutes MainLoopDelayInMinutes = 1min;
-constexpr std::chrono::nanoseconds MainLoopDelayInNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(MainLoopDelayInMinutes); 
+constexpr std::chrono::seconds PollDelay = 1s;
+constexpr std::chrono::minutes AccountingInterval = 1min;
+constexpr std::chrono::nanoseconds PollDelayInNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(PollDelay);
 
 namespace alefbet::pctrl::srv {   
 
@@ -49,8 +52,8 @@ namespace alefbet::pctrl::srv {
                 const auto setting = settings[SETTING_ENABLED];
                 if(setting.int_value == 0) {
                     logInfo("[Monitor] Parental Control is now disabled.\n");
-                    running_ = false;
-                    return;
+                    stop();
+                    continue;
                 }
             }            
 
@@ -58,42 +61,66 @@ namespace alefbet::pctrl::srv {
             // Query the active application and user
             // and update the database
             pid = getRunningApplicationPid();
-            u16 daily_limit = 0;            
             
             if(pid != 0) { 
-                const auto title_id = getRunningApplicationTitleId(pid);
+                const auto titleId = getRunningApplicationTitleId(pid);
                 user = getCurrentUser();
 
                 if(user.isValid()) {
-                    logDebug("[Monitor] Title %i is currently in used by %s. Updating history.\n", title_id, user.nickname.c_str());                    
-
-                    const auto& entry = addToHistory(user.uid, title_id, MainLoopDelayInMinutes.count());
-
-                    if(!entry.isValid()) {
-                        logError("[Monitor] The database entry is corrupted\n");
-                        continue;
+                    const auto now = std::chrono::steady_clock::now();
+                    const bool applicationChanged = currentTitle_ != titleId || !(currentUser_ == user);
+                    if(applicationChanged) {
+                        lastNotifiedRemaining_ = -1;
                     }
 
-                    const auto totalDuration = getUserUsageTimeForToday(user.uid);                    
+                    const auto userId = accountUidToString(user.uid);
+                    const auto globalLimit = getDailyLimitForUser(userId);
+                    const auto titleLimit = getDailyLimitForTitle(userId, titleId);
+                    auto globalUsage = getUserUsageTimeForToday(user.uid);
+                    auto titleUsage = getUserTitleUsageTimeForToday(user.uid, titleId);
+                    auto limits = evaluateLimits(globalLimit, globalUsage, titleLimit, titleUsage);
 
-                    const auto& userId = accountUidToString(user.uid);
-                    daily_limit = getDailyLimitForUser(userId);
+                    const auto elapsed = applicationChanged
+                        ? AccountingInterval
+                        : std::chrono::duration_cast<std::chrono::minutes>(now - lastAccountedAt_);
+                    if(!limits.isExpired() && elapsed >= AccountingInterval) {
+                        const auto minutesToAdd = static_cast<u16>(std::min<s64>(elapsed.count(), UINT16_MAX));
+                        const auto& entry = addToHistory(user.uid, titleId, minutesToAdd);
+                        if(!entry.isValid()) {
+                            logError("[Monitor] The database entry is corrupted\n");
+                            continue;
+                        }
 
-                    u16 remainingTimeInMinutes = daily_limit > totalDuration ? daily_limit - totalDuration : 0;
-                    logDebug("[Monitor] Remaining time for user %s is %i minutes. Daily limit=%i\n", user.nickname.c_str(), remainingTimeInMinutes, daily_limit);
+                        lastAccountedAt_ = now;
+                        globalUsage = getUserUsageTimeForToday(user.uid);
+                        titleUsage = getUserTitleUsageTimeForToday(user.uid, titleId);
+                        limits = evaluateLimits(globalLimit, globalUsage, titleLimit, titleUsage);
+                    }
 
-                    if(settings.contains(SETTING_SHOW_REMAINING_TIME)) {
-                        const auto& showRemainingTime = settings[SETTING_SHOW_REMAINING_TIME].int_value > 0;                                                
-                        if(showRemainingTime) {                            
-                            if(shouldSendNotification(remainingTimeInMinutes)) {
-                                NotificationsController::notifyRemainingTime(remainingTimeInMinutes);
+                    currentTitle_ = titleId;
+                    currentUser_ = user;
+
+                    if(limits.isLimited()) {
+                        logDebug("[Monitor] Remaining time for user %s and title %llu is %i minutes\n", user.nickname.c_str(), titleId, limits.remainingMinutes);
+
+                        if(settings.contains(SETTING_SHOW_REMAINING_TIME)
+                            && settings[SETTING_SHOW_REMAINING_TIME].int_value > 0
+                            && lastNotifiedRemaining_ != limits.remainingMinutes
+                            && shouldSendNotification(limits.remainingMinutes)) {
+                            NotificationsController::notifyRemainingTime(limits.remainingMinutes);
+                            lastNotifiedRemaining_ = limits.remainingMinutes;
+                        }
+
+                        if(limits.isExpired()) {
+                            logInfo("[Monitor] Timeout for user %s and title %llu\n", user.nickname.c_str(), titleId);
+                            if(limits.scope == LimitScope::Title) {
+                                if(!terminateCurrentApplication()) {
+                                    service_->showScreenTimeout();
+                                }
+                            } else {
+                                service_->showScreenTimeout();
                             }
                         }
-                    }
-
-                    if(remainingTimeInMinutes <= 0) {
-                        logInfo("[Monitor] Timeout for the user %s\n", user.nickname.c_str());
-                        service_->showScreenTimeout();
                     }
                 } else {
                     logDebug("[Monitor] No user found\n");
@@ -105,11 +132,13 @@ namespace alefbet::pctrl::srv {
                     logDebug("[Monitor] The game has been closed\n");
 
                     currentTitle_ = 0;
+                    currentUser_.clear();
+                    lastNotifiedRemaining_ = -1;
                 }
             }
 
             logDebug("[Monitoring] loop\n");
-            svcSleepThread(MainLoopDelayInNanos.count()); //Wait 1 minute
+            svcSleepThread(PollDelayInNanos.count());
         }
 
         logInfo("[Monitor] Stopped monitoring.\n");

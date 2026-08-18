@@ -64,6 +64,7 @@ namespace alefbet::pctrl {
         u64 getRunningApplicationTitleId(u64 process_id);
         std::string getApplicationName(u64 title_id);
         u16 getUserUsageTimeForToday(const AccountUid& uid);
+        u16 getUserTitleUsageTimeForToday(const AccountUid& uid, u64 titleId);
 
         std::string today();
 
@@ -81,6 +82,8 @@ namespace alefbet::pctrl {
         // Limits management
         u16 getDailyLimitForUser(const std::string& userId);
         void setDailyLimitForUser(const std::string& userId, u16 limit_in_minutes);
+        u16 getDailyLimitForTitle(const std::string& userId, u64 titleId);
+        void setDailyLimitForTitle(const std::string& userId, u64 titleId, u16 limit_in_minutes);
 
         // Authentication management
         std::string encodePassword(const std::vector<u64>&);

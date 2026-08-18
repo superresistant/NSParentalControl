@@ -48,7 +48,7 @@ Parental control has the following features:
 **Gamers**
 - Check the played time (since 1.0)
 - Check the remaining play time (since 1.0)
-- When the time is out, the system is blocked (since 1.0)
+- When the all-games time is out, the system is blocked; a per-game timeout closes only that game
 - Be notified every 15 minutes and every minute in the last 5 minutes (since 1.2)
 - Get usage history (since 1.2)
 
@@ -58,6 +58,7 @@ Parental control has the following features:
 - Enable or disable the notifications (since 1.2)
 - Choose the log level between Debug and Information (since 1.2)
 - Define individual limits (since 1.3)
+- Define daily limits for individual installed games (since 1.4.0-pg1)
 
 ## Coming features
 
